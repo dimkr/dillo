@@ -73,6 +73,7 @@ enum {
    DILLO_CLI_ERROR         = 1 << 15
 };
 
+#undef O_SEARCH
 enum {
    O_SEARCH, O_FOUND, O_NOTFOUND, O_OK, O_ERROR, O_DONE
 };
