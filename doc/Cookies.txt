@@ -1,0 +1,127 @@
+Jan 2002, Jörgen Viksell - jorgen.viksell@telia.com,
+          Jorge Arellano Cid --
+Last update: April 2005, DarkSpirit
+
+
+==================
+ Cookies in Dillo
+==================
+
+ The  cookie  support in Dillo aims to support cookies of the old
+original Netscape style, as well as the kind specified in RFC 2109.
+
+ Cookies are managed outside of dillo by the cookies.dpi. It uses
+a  cookies  file  in netscape format so it can be used with other
+programs like for example wget.
+
+ Between  sessions cookies are saved to ~/.dillo/cookies.txt, the
+old  ~/.dillo/cookies  is read too but not updated. At the moment
+the only enforcements on the amount of cookies to save to disk is
+max 20 per domain.
+
+ There's also a file for controlling cookies: ~/.dillo/cookiesrc.
+Dillo initially sets it to ignore (reject) all cookies, so if you
+want to use cookies, change it to meet your needs.
+
+ If you don't want cookies at all, you have two options:
+
+1.- Delete ~/.dillo/cookiesrc (or leave it just as dillo creates it).
+2. Configure Dillo with ./configure --disable-cookies. Then all the
+   cookie stuff will be skipped at compilation.
+
+Note:  "--disable-cookies"  absolutely eliminates cookie support,
+no matter what "cookiesrc" says.
+
+
+
+=====================
+ Controlling cookies
+=====================
+
+ There is a small and simple way to restrict urls from setting cookies
+in Dillo. In the file ~/.dillo/cookiesrc You may specify rules
+for different domains. The syntax looks something like this:
+
+DEFAULT       DENY
+slashdot.org  ACCEPT
+.host.com     ACCEPT_SESSION
+
+ The first line says that we should deny all cookies from all domains
+by default.
+ The second one tells Dillo to save all cookies from slashdot.org
+across sessions, until it expires.
+ And finally, the third says that all subdomains of host.com should be
+allowed to set cookies. But these cookies will only be saved in
+memory until you exit.
+
+
+===================
+ Cookies & Privacy
+===================
+
+ Cookies can be a severe threat to personal privacy. The pages you
+visit can be tracked, logged, and associated to a peronal data-record,
+allowing the possibility of building a detailed profile of your
+browsing habits.
+
+ This data is sold to companies that profit from direct use of such
+information (SPAM, Spying, etc).
+
+ If this data is cross-referenced with other databases, they can end up
+with more information than you have about yourself.
+
+ Some people may tell you this is "paranoid". But please, take my words
+as those of someone that has written a web browser, a cookies implementation,
+and that has deep understanding of HTTP (RFC-2068) and cookies (RFC-2965).
+
+ Non technical persons may like to read:
+   http://www.junkbusters.com/cookies.html
+   http://www.newsfactor.com/perl/story/16455.html (about user-spying)
+
+ The dillo project is especially concerned about privacy and security
+issues. Our advice is to avoid cookies whenever possible and at most set
+ACCEPT_SESSION to specific, trusted sites.  -- You have been warned.
+
+
+=========================
+ DPI-Dillo comunications
+=========================
+
+ The cookies.dpi has the state of the cookies and is the only one
+that  reads  and  writes  to  the cookies.txt file. The different
+running dillos must ask and send cookies to it.
+
+ To  minimize  communications  between the dpi and dillo clients,
+every  different instance of dillo reads 'cookiesrc' and only ask
+and send cookies for allowed sites.
+
+ The  cookies.dpi  also  needs  to read 'cookiesrc'. If a site is
+changed  to  deny  cookies  in  'cookiesrc',  the cookies dpi can
+delete  the cookies for that site from the 'cookies.txt' file the
+next time it loads and writes that file.
+
+ All  the work is implemented adding only three new dpi commands,
+two really, and a new send bloking dpi command function.
+
+ When  dillo  wants  the cookies for a certain site, it sends the
+'get_cookie'  dpi  command  to the cookies.dpi, and the dpi sends
+the answer inside a 'get_cookies_answer' dpi command.
+
+ If  an allowed site sends a cookie, dillo uses the 'set_cookies'
+dpi command to let the cookies dpi store it.
+
+
+==============
+ Restrictions
+==============
+
+ Use  "dpidc  stop"  before  making changes to cookies.txt or any
+cookie  files  or  you can lose your changes when the running dpi
+rewrites  them. After the cookies dpi reloads the file all dillos
+will use the new one.
+
+ If  you change the 'cookiesrc' (previously calling "dpidc stop")
+only newly opened dillos will use the changes.
+
+
+Thats all folks!
