@@ -92,7 +92,6 @@ static GDnsCache *dns_cache;
 static gint dns_cache_size, dns_cache_size_max;
 static GDnsQueue *dns_queue;
 static gint dns_queue_size, dns_queue_size_max;
-static gboolean ipv6_enabled;
 
 
 /* ----------------------------------------------------------------------
@@ -216,36 +215,40 @@ void a_Dns_init(void)
       dns_server[i].th1 = (pthread_t) -1;
 #endif
    }
-
-   /* IPv6 test */
-   ipv6_enabled = FALSE;
-#ifdef ENABLE_IPV6
-   {
-      /* If the IPv6 address family is not available there is no point
-         wasting time trying to connect to v6 addresses. */
-      int fd = socket(AF_INET6, SOCK_STREAM, 0);
-      if (fd >= 0) {
-         close(fd);
-         ipv6_enabled = TRUE;
-      }
-   }
-#endif
 }
 
 /*
  * Allocate a host structure and add it to the list
  */
-static GSList *Dns_note_hosts(GSList *list, int af, struct hostent *host)
+static GSList *Dns_note_hosts(GSList *list, struct addrinfo *host)
 {
-   int i;
-
-   if (host->h_length > DILLO_ADDR_MAX)
-      return list;
-   for (i = 0; host->h_addr_list[i]; i++) {
+   struct addrinfo *i;
+   unsigned int count = 0;
+   for (i = host; NULL != i; i = i->ai_next) {
+#ifndef ENABLE_IPV6
+      if (AF_INET6 == i->ai_family)
+          continue;
+#endif
+      ++count;
+      if (DILLO_ADDR_MAX <= count)
+          return list;
       DilloHost *dh = g_new0(DilloHost, 1);
-      dh->af = af;
-      dh->alen = host->h_length;
-      memcpy(&dh->data[0], host->h_addr_list[i], (size_t)host->h_length);
+      dh->af = i->ai_family;
+      dh->alen = i->ai_addrlen;
+      switch (dh->af) {
+          case AF_INET:
+              memcpy(&dh->data[0],
+                     &((struct sockaddr_in *) i->ai_addr)->sin_addr,
+                     sizeof(struct in_addr));
+              break;
+
+#ifndef ENABLE_IPV6
+          case AF_INET6:
+              memcpy(&dh->data[0],
+                     &((struct sockaddr_in6 *) i->ai_addr)->sin6_addr,
+                     sizeof(struct in6_addr));
+#endif
+      }
       list = g_slist_append(list, dh);
    }
    return list;
@@ -257,35 +260,30 @@ static GSList *Dns_note_hosts(GSList *list, int af, struct hostent *host)
  */
 static void *Dns_server(void *data)
 {
-   struct hostent *host;
+   struct addrinfo hints;
+   struct addrinfo *addresses = NULL;
    gint channel = GPOINTER_TO_INT(data);
-#ifdef LIBC5
-   gint h_err;
-   char buff[1024];
-   struct hostent sh;
-#endif
    GSList *hosts = NULL;
 
    DEBUG_MSG(3, "Dns_server: starting...\n ch: %d host: %s\n",
              channel, dns_server[channel].hostname);
 
-#ifdef ENABLE_IPV6
-   if (ipv6_enabled) {
-      host = gethostbyname2(dns_server[channel].hostname, AF_INET6);
-      if (host)
-         hosts = Dns_note_hosts(hosts, AF_INET6, host);
+   hints.ai_flags = AI_ADDRCONFIG;
+   hints.ai_family = AF_UNSPEC;
+   hints.ai_socktype = SOCK_STREAM;
+   hints.ai_protocol = 0;
+   hints.ai_addrlen = 0;
+   hints.ai_addr = NULL;
+   hints.ai_canonname = NULL;
+   hints.ai_next = NULL;
+   if (0 != getaddrinfo(dns_server[channel].hostname,
+                        NULL,
+                        &hints,
+                        &addresses)) {
+       return NULL;
    }
-#endif
-
-#ifdef LIBC5
-   host = gethostbyname_r(dns_server[channel].hostname, &sh, buff,
-                          sizeof(buff), &h_err);
-#else
-   host = gethostbyname(dns_server[channel].hostname);
-#endif
-
-   if (host)
-      hosts = Dns_note_hosts(hosts, AF_INET, host);
+   hosts = Dns_note_hosts(hosts, addresses);
+   freeaddrinfo(addresses);
 
    /* write hostname to client */
    DEBUG_MSG(5, "Dns_server [%d]: %s is %p\n", channel,
@@ -304,30 +302,33 @@ static void *Dns_server(void *data)
 static void Dns_blocking_server(void)
 {
    gint channel = 0;
-   struct hostent *host = NULL;
+   struct addrinfo hints;
+   struct addrinfo *addresses;
    GSList *hosts = NULL;
 
    DEBUG_MSG(3, "Dns_blocking_server: starting...\n");
    DEBUG_MSG(3, "Dns_blocking_server: dns_server[%d].hostname = %s\n",
              channel, dns_server[channel].hostname);
 
-#ifdef ENABLE_IPV6
-   if (ipv6_enabled) {
-      host = gethostbyname2(dns_server[channel].hostname, AF_INET6);
-      if (host)
-         hosts = Dns_note_hosts(hosts, AF_INET6, host);
+   hints.ai_flags = AI_ADDRCONFIG;
+   hints.ai_family = AF_UNSPEC;
+   hints.ai_socktype = SOCK_STREAM;
+   hints.ai_protocol = 0;
+   hints.ai_addrlen = 0;
+   hints.ai_addr = NULL;
+   hints.ai_canonname = NULL;
+   hints.ai_next = NULL;
+   if (0 != getaddrinfo(dns_server[channel].hostname,
+                        NULL,
+                        &hints,
+                        &addresses)) {
+       DEBUG_MSG(3, "--> Dns_blocking_server: bad return\n");
+       return NULL;
+   } else {
+       DEBUG_MSG(3, "--> Dns_blocking_server - good return\n");
    }
-#endif
-
-   if (!host) {
-      host = gethostbyname(dns_server[channel].hostname);
-      if (host == NULL) {
-         DEBUG_MSG(3, "--> Dns_blocking_server: gethostbyname NULL return\n");
-      } else {
-         DEBUG_MSG(3, "--> Dns_blocking_server - good return\n");
-         hosts = Dns_note_hosts(hosts, AF_INET, host);
-      }
-   }
+   hosts = Dns_note_hosts(hosts, addresses);
+   freeaddrinfo(addresses);
 
    /* write IP to server data channel */
    DEBUG_MSG(3, "Dns_blocking_server: IP of %s is %p\n",
