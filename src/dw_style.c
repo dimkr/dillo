@@ -665,8 +665,8 @@ static void Dw_style_color_create (gint color_val,
       lightness = (gdouble)green / 255;
       saturation = (gdouble)blue / 255;
 
-      DEBUG_MSG (1, "Shaded by %1.3g: (%1.3g, %1.3g, %1.3g) -> ",
-                 k, hue, lightness, saturation);
+      DEBUG_MSG (1, "Shaded by: (%1.3g, %1.3g, %1.3g) -> ",
+                 hue, lightness, saturation);
       Dw_style_rgb_to_hls (&hue, &lightness, &saturation);
 
       if (lightness > 0.8) {
