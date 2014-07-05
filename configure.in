@@ -33,6 +33,8 @@ AC_ARG_ENABLE(gif,    [  --disable-gif           Disable support for GIF images]
               enable_gif=$enableval, enable_gif=yes)
 AC_ARG_ENABLE(ssl,    [  --disable-ssl           Disable ssl features (eg. https)],
               enable_ssl=$enableval, enable_ssl=yes)
+AC_ARG_ENABLE(axtls,  [  --enable-axtls          Use axTLS instead of OpenSSL],
+              enable_axtls=$enableval, enable_axtls=no)
 AC_ARG_ENABLE(dlgui,  [  --disable-dlgui         Disable FLTK2 GUI for downloads],
               enable_dlgui=$enableval, enable_dlgui=yes)
 AC_ARG_ENABLE(threaded-dns,[  --disable-threaded-dns  Disable the advantage of a reentrant resolver library],
@@ -257,16 +259,35 @@ if test "x$enable_ssl" = "xyes"; then
   fi
 
   if test "x$ssl_ok" = "xyes"; then
+    AC_MSG_CHECKING([whether OpenSSL can be used for SSL support])
     LIBSSL_LIBS="-lcrypto -lssl"
-  else
-    AC_MSG_WARN([*** No libssl found. Disabling ssl support.***])
+    AC_MSG_RESULT(yes)
   fi
 fi
 
-if test "x$ssl_ok" = "xyes"; then
-  AC_DEFINE([ENABLE_SSL], [], [Enable SSL support])
+if test "x$enable_axtls" = "xyes"; then
+  AC_CHECK_HEADER(axTLS/ssl.h, axtls_ok=yes, axtls_ok=no)
+
+  if test "axtls_ok" = "xyes"; then
+    AC_CHECK_LIB(axtls, ssl_ctx_new, axtls_ok=yes, axtls_ok=no, -laxtls)
+  fi
+
+  if test "x$axtls_ok" = "xyes"; then
+    AC_MSG_CHECKING([whether axTLS can be used for SSL support])
+    AXTLS_LIBS="-laxtls"
+    AC_MSG_RESULT(yes)
+  fi
 fi
 
+if test "x$ssl_ok" = "xyes" || test "x$axtls_ok" = "xyes"; then
+  AC_DEFINE([ENABLE_SSL], [], [Enable SSL support])
+else
+  AC_MSG_WARN([*** No OpenSSL or axTLS found. Disabling SSL support.***])
+fi
+
+if test "x$axtls_ok" = "xyes"; then
+  AC_DEFINE([ENABLE_AXTLS], [], [Enable axTLS support])
+fi
 
 dnl ----------------------
 dnl Test for POSIX threads
@@ -422,6 +443,7 @@ AC_SUBST(LIBPNG_LIBS)
 AC_SUBST(LIBPNG_CFLAGS)
 AC_SUBST(LIBZ_LIBS)
 AC_SUBST(LIBSSL_LIBS)
+AC_SUBST(AXTLS_LIBS)
 AC_SUBST(LIBPTHREAD_LIBS)
 AC_SUBST(LIBPTHREAD_LDFLAGS)
 AC_SUBST(LIBFLTK_CXXFLAGS)

@@ -25,7 +25,7 @@ else
 downloads_dpi_LDADD = @GLIB_LIBS@ ../dpip/libDpip.a
 endif
 ftp_filter_dpi_LDADD = @GLIB_LIBS@ ../dpip/libDpip.a
-https_filter_dpi_LDADD = @GLIB_LIBS@ @LIBSSL_LIBS@ ../dpip/libDpip.a
+https_filter_dpi_LDADD = @GLIB_LIBS@ @LIBSSL_LIBS@ @AXTLS_LIBS@ ../dpip/libDpip.a
 hello_filter_dpi_LDADD = @GLIB_LIBS@ ../dpip/libDpip.a
 file_dpi_LDADD = @GLIB_LIBS@ @LIBPTHREAD_LIBS@ ../dpip/libDpip.a
 cookies_dpi_LDADD = @GLIB_LIBS@ ../dpip/libDpip.a

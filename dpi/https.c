@@ -61,16 +61,20 @@
 #include "../dpip/dpip.h"
 #include "dpiutil.h"
 
-#define ENABLE_SSL
-#undef ENABLE_SSL
 #ifdef ENABLE_SSL
 
-#include <openssl/ssl.h>
-#include <openssl/rand.h>
+#	ifdef ENABLE_AXTLS
+#		include <axTLS/ssl.h>
+#	else
+#		include <openssl/ssl.h>
+#		include <openssl/rand.h>
+#	endif
 
 static int get_network_connection(gchar * url);
 static int handle_certificate_problem(SSL * ssl_connection);
+#	ifndef ENABLE_AXTLS
 static int save_certificate_home(X509 * cert);
+#	endif
 
 #endif
 
@@ -120,14 +124,35 @@ static void yes_ssl_support(void)
    SSL * ssl_connection = NULL;
 
    gchar *dpip_tag = NULL, *cmd = NULL, *url = NULL, *http_query = NULL;
+#ifdef ENABLE_AXTLS
+   uint8_t *buf = NULL;
+#else
    gchar buf[4096];
+#endif
    int retval = 0;
    int network_socket = -1;
+#ifdef ENABLE_AXTLS
+   int status = 0;
+#endif
 
 
    g_printerr("{In https.filter.dpi}\n");
 
    /*Initialize library*/
+#ifdef ENABLE_AXTLS
+   ssl_context = ssl_ctx_new(0, 0);
+   if (NULL == ssl_context) {
+      exit_error = 1;
+   }
+
+   if (exit_error == 0){
+      ssl_obj_load(ssl_context,
+                   SSL_OBJ_X509_CACERT,
+                   "/etc/ssl/certs/ca-certificates.crt",
+                   NULL);
+   }
+
+#else
    SSL_load_error_strings();
    SSL_library_init();
    if (RAND_status() != 1){
@@ -169,8 +194,10 @@ static void yes_ssl_support(void)
          exit_error = 1;
       }
    }
+#endif
 
    if (exit_error == 0){
+#ifndef ENABLE_AXTLS
       /* Need to do the following if we want to deal with all
        * possible ciphers
        */
@@ -180,6 +207,7 @@ static void yes_ssl_support(void)
        * with self-signed certs
        */
       SSL_set_verify(ssl_connection, SSL_VERIFY_NONE, 0);
+#endif
 
       /*Get the network address and command to be used*/
       dpip_tag = sock_handler_read(sh);
@@ -202,7 +230,22 @@ static void yes_ssl_support(void)
       }
    }
 
+#ifdef ENABLE_AXTLS
+   if (exit_error == 0) {
+      ssl_connection = ssl_client_new(ssl_context, network_socket, NULL, 32);
+      if (NULL == ssl_connection) {
+         exit_error = 1;
+      }
+   }
 
+   if (exit_error == 0) {
+      status = ssl_handshake_status(ssl_connection);
+      if (SSL_OK != status) {
+         g_printerr("SSL handshake failed\n");
+         exit_error = 1;
+      }
+   }
+#else
    if (exit_error == 0){
       /* Configure SSL to use network file descriptor */
       if (SSL_set_fd(ssl_connection, network_socket) == 0){
@@ -226,12 +269,19 @@ static void yes_ssl_support(void)
          exit_error = 1;
       }
    }
+#endif
 
    if (exit_error == 0) {
       char *d_cmd;
 
       /*Send query we want*/
+#ifdef ENABLE_AXTLS
+      ssl_write(ssl_connection,
+                (const uint8_t*) http_query,
+                (int)strlen(http_query));
+#else
       SSL_write(ssl_connection, http_query, (int)strlen(http_query));
+#endif
 
       /*Analyse response from server*/
 
@@ -242,9 +292,17 @@ static void yes_ssl_support(void)
 
       /*Send remaining data*/
 
+#ifdef ENABLE_AXTLS
+      if (SSL_OK == ssl_read(ssl_connection, &buf)) {
+         while ((retval = ssl_read(ssl_connection, &buf)) > 0 ){
+            sock_handler_write(sh, (const char*)buf, (size_t)retval, 0);
+         }
+      }
+#else
       while ((retval = SSL_read(ssl_connection, buf, 4096)) > 0 ){
          sock_handler_write(sh, buf, (size_t)retval, 0);
       }
+#endif
    }
 
    /*Begin cleanup of all resources used*/
@@ -258,11 +316,19 @@ static void yes_ssl_support(void)
       network_socket = -1;
    }
    if (ssl_connection != NULL){
+#ifdef ENABLE_AXTLS
+      ssl_free(ssl_connection);
+#else
       SSL_free(ssl_connection);
+#endif
       ssl_connection = NULL;
    }
    if (ssl_context != NULL){
+#ifdef ENABLE_AXTLS
+      ssl_ctx_free(ssl_context);
+#else
       SSL_CTX_free(ssl_context);
+#endif
       ssl_context = NULL;
    }
 }
@@ -272,6 +338,7 @@ static void yes_ssl_support(void)
  * remote server and return the file descriptor number of the
  * socket.  Returns -1 in the event of an error
  */
+#ifdef ENABLE_SSL
 static int get_network_connection(gchar * url)
 {
    struct sockaddr_in address;
@@ -329,7 +396,7 @@ static int get_network_connection(gchar * url)
    }
    return s;
 }
-
+#endif
 
 /* This function is run only when the certificate cannot
  * be completely trusted.  This will notify the user and
@@ -340,6 +407,9 @@ static int get_network_connection(gchar * url)
  */
 static int handle_certificate_problem(SSL * ssl_connection)
 {
+#ifdef ENABLE_AXTLS
+   return (-1);
+#else
    gint response_number;
    int retval = -1;
    long st;
@@ -559,12 +629,14 @@ static int handle_certificate_problem(SSL * ssl_connection)
    }
 
    return retval;
+#endif
 }
 
 /*
  * Save certificate with a hashed filename.
  * Return: 0 on success, 1 on failure.
  */
+#ifndef ENABLE_AXTLS
 static int save_certificate_home(X509 * cert)
 {
    char buf[4096];
@@ -608,6 +680,7 @@ static int save_certificate_home(X509 * cert)
 }
 
 
+#endif
 
 #else
 
