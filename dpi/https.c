@@ -170,10 +170,8 @@ static void yes_ssl_support(void)
    }
 
    /*Set directory to load certificates from*/
-   /*FIXME - provide for sysconfdir variables and such*/
    if (exit_error == 0){
-      if (SSL_CTX_load_verify_locations(
-         ssl_context, NULL, "/etc/ssl/certs/" ) == 0){
+      if (SSL_CTX_set_default_verify_paths(ssl_context) == 0) {
          g_printerr("Error opening system x509 certificate location\n");
          exit_error = 1;
       }
